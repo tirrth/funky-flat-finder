@@ -28,9 +28,6 @@ async function fetchApartments() {
         const apartments = await page.evaluate(() => {
             const rows = Array.from(document.querySelectorAll('table.availableUnits tbody > tr'))
             return rows.map(row => {
-                // const apartment = row.querySelector('td[data-selenium-id=\'Apt1\']').innerText.trim()
-                // const sqFt = row.querySelector('td[data-selenium-id=\'SqFt1\']').innerText.trim()
-                // const rent = row.querySelector('td[data-selenium-id=\'Rent1\']').innerText.trim()
                 const apartment = row.querySelector('td[data-label=\'Apartment\']').innerText.trim()
                 const sqFt = row.querySelector('td[data-label=\'Sq.Ft.\']').innerText.trim()
                 const rent = row.querySelector('td[data-label=\'Rent\']').innerText.trim()
