@@ -21,6 +21,7 @@ async function fetchApartments() {
     let browser
     try {
         browser = await puppeteer.launch({
+            headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox'] // Recommended for server environments
         })
         const page = await browser.newPage()
