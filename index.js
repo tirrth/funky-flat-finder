@@ -15,12 +15,13 @@ let lastErrorMessage = ''
 let uniqueErrors = new Set()
 let previouslyAvailable = false
 const processStartTime = Date.now()
+let apartmentsChanged = false // Variable to track if apartments availability changed
 
 async function fetchApartments() {
     let browser
     try {
         browser = await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox'], // Recommended for server environments
+            args: ['--no-sandbox', '--disable-setuid-sandbox'] // Recommended for server environments
         })
         const page = await browser.newPage()
         await page.goto(url, { waitUntil: 'networkidle2' })
@@ -63,11 +64,21 @@ async function sendTelegramMessage(message) {
     }
 }
 
+function formatDuration(ms) {
+    const totalSeconds = ms / 1000
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = Math.floor(totalSeconds % 60)
+    return `${hours} hours, ${minutes} minutes, ${seconds} seconds`
+}
+
 async function sendPeriodicReport() {
-    const runningTime = Math.floor((Date.now() - processStartTime) / (1000 * 60 * 60)) // in hours
+    const runningTime = Date.now() - processStartTime
+    const formattedRunningTime = formatDuration(runningTime)
     const message = `<b>📊 Process Report 📊</b>\n` +
-        `Running Time: ${runningTime} hours\n` +
+        `Running Time: ${formattedRunningTime}\n` +
         `Checks Performed: ${checksPerformed}\n` +
+        `Apartments Availability Changed: ${apartmentsChanged ? 'Yes' : 'No'}\n` +
         `Unique Errors Encountered: ${uniqueErrors.size}`
 
     await sendTelegramMessage(message)
@@ -75,13 +86,14 @@ async function sendPeriodicReport() {
 
 async function checkAndNotify() {
     checksPerformed++
+    apartmentsChanged = false // Reset the flag at the start of each check
     try {
         const apartments = await fetchApartments()
-        console.log('Apartments:', apartments)
 
         if (apartments.length === 0 && previouslyAvailable) {
             await sendTelegramMessage('No apartments are currently available.')
             previouslyAvailable = false
+            apartmentsChanged = true // Indicate change
             prevState = []
         } else if (apartments.length > 0) {
             const newApartments = apartments.filter(a => {
@@ -89,7 +101,12 @@ async function checkAndNotify() {
                 return !prevState.includes(aptDetails)
             })
 
+            if (newApartments.length > 0 || prevState.length !== apartments.length) {
+                apartmentsChanged = true // Indicate change if there are new apartments or the list length has changed
+            }
+
             if (newApartments.length > 0) {
+                // Similar message construction as before, sending new apartments list...
                 const maxApartmentLength = Math.max(...newApartments.map(a => a.apartment.length), 'Apartment'.length)
                 const maxSqFtLength = Math.max(...newApartments.map(a => a.sqFt.length), 'Sq.Ft'.length)
                 const maxRentLength = Math.max(...newApartments.map(a => a.rent.length), 'Rent'.length)
@@ -105,7 +122,8 @@ async function checkAndNotify() {
                 const message = `${messageHeader}\n<pre>${tableHeader}\n${horizontalLine}\n${apartmentsList}</pre>`
 
                 await sendTelegramMessage(message)
-                prevState = newApartments.map(a => `${a.apartment} ${a.sqFt} ${a.rent}`)
+
+                prevState = apartments.map(a => `${a.apartment} ${a.sqFt} ${a.rent}`)
                 previouslyAvailable = true
             }
         }
@@ -120,11 +138,25 @@ async function checkAndNotify() {
     }
 }
 
-(async () => {
-    // setInterval(sendPeriodicReport, 1000 * 60 * 60 * 12) // 12 hours in milliseconds
-    setInterval(sendPeriodicReport, 720000) // 12 minutes in milliseconds
+async function startProcess() {
+    const startTime = new Date()
+    await sendTelegramMessage(`Process started at ${startTime.toISOString()}`)
+    console.log('Process started')
+
+    // Schedule periodic reports to be sent every hour
+    setInterval(sendPeriodicReport, 3600000) // 3600000 ms = 1 hour
+
+    // Main loop for checking apartments
     while (true) {
         await checkAndNotify()
+        await sendPeriodicReport() // Send a report after each check for demonstration, adjust as needed
         await new Promise(resolve => setTimeout(resolve, 20000)) // Wait for 20 seconds before the next check
     }
-})()
+
+    // // If you ever decide to stop the process programmatically, add a stop condition and log the end
+    // console.log('Process stopped')
+    // const endTime = new Date()
+    // await sendTelegramMessage(`Process stopped at ${endTime.toISOString()}`)
+}
+
+startProcess() // Call to start the entire process
