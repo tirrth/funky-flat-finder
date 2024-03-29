@@ -150,7 +150,6 @@ async function startProcess() {
     // Main loop for checking apartments
     while (true) {
         await checkAndNotify()
-        await sendPeriodicReport() // Send a report after each check for demonstration, adjust as needed
         await new Promise(resolve => setTimeout(resolve, 20000)) // Wait for 20 seconds before the next check
     }
 
