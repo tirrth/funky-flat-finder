@@ -90,10 +90,10 @@ async function checkAndNotify() {
     apartmentsChanged = false // Reset the flag at the start of each check
     try {
         const apartments = await fetchApartments()
-        console.log('apartments =', apartments, (new Date()).toISOString())
+        console.log('apartments =', apartments, '; time =', (new Date()).toISOString())
 
         if (apartments.length === 0 && previouslyAvailable) {
-            await sendTelegramMessage('No apartments are currently available.')
+            await sendTelegramMessage('Oops, all the apartments vanished! 🏃‍♂️💨 You snooze, you lose, bruh! 😜')
             previouslyAvailable = false
             apartmentsChanged = true // Indicate change
             prevState = []
@@ -145,13 +145,20 @@ async function startProcess() {
     await sendTelegramMessage(`Process started at ${startTime.toISOString()}`)
     console.log('Process started')
 
-    // Schedule periodic reports to be sent every hour
-    setInterval(sendPeriodicReport, 3600000) // 3600000 ms = 1 hour
+    let lastReportTime = Date.now() // Initialize last report time to now
 
-    // Main loop for checking apartments
+    // Main loop for checking apartments and sending periodic reports
     while (true) {
         await checkAndNotify()
-        await new Promise(resolve => setTimeout(resolve, 20000)) // Wait for 20 seconds before the next check
+
+        // Check if an hour has passed since the last report
+        if (Date.now() - lastReportTime >= 3600000) { // 3600000ms = 1 hour
+            await sendPeriodicReport()
+            lastReportTime = Date.now() // Reset last report time
+        }
+
+        // Wait for 20 seconds before the next check
+        await new Promise(resolve => setTimeout(resolve, 20000))
     }
 
     // // If you ever decide to stop the process programmatically, add a stop condition and log the end
