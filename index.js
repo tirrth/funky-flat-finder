@@ -90,6 +90,7 @@ async function checkAndNotify() {
     apartmentsChanged = false // Reset the flag at the start of each check
     try {
         const apartments = await fetchApartments()
+        console.log('apartments =', apartments, (new Date()).toISOString())
 
         if (apartments.length === 0 && previouslyAvailable) {
             await sendTelegramMessage('No apartments are currently available.')
