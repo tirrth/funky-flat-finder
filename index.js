@@ -151,8 +151,8 @@ async function startProcess() {
     while (true) {
         await checkAndNotify()
 
-        // Check if an hour has passed since the last report
-        if (Date.now() - lastReportTime >= 3600000) { // 3600000ms = 1 hour
+        // Check if 4 hours has passed since the last report
+        if (Date.now() - lastReportTime >= 14400000) { // 3600000ms = 1 hour
             await sendPeriodicReport()
             lastReportTime = Date.now() // Reset last report time
         }
