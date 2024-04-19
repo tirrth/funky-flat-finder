@@ -85,49 +85,99 @@ async function sendPeriodicReport() {
     await sendTelegramMessage(message)
 }
 
+// async function checkAndNotify() {
+//     checksPerformed++
+//     apartmentsChanged = false // Reset the flag at the start of each check
+//     try {
+//         const apartments = await fetchApartments()
+//         console.log('apartments =', apartments, ' time =', (new Date()).toISOString())
+
+//         if (apartments.length === 0 && previouslyAvailable) {
+//             await sendTelegramMessage('Oops, all the apartments vanished! 🏃‍♂️💨 You snooze, you lose, bruh! 😜')
+//             previouslyAvailable = false
+//             apartmentsChanged = true // Indicate change
+//             prevState = []
+//         } else if (apartments.length > 0) {
+//             const newApartments = apartments.filter(a => {
+//                 const aptDetails = `${a.apartment} ${a.sqFt} ${a.rent}`
+//                 return !prevState.includes(aptDetails)
+//             })
+
+//             if (newApartments.length > 0 || prevState.length !== apartments.length) {
+//                 apartmentsChanged = true // Indicate change if there are new apartments or the list length has changed
+//             }
+
+//             if (newApartments.length > 0) {
+//                 // Similar message construction as before, sending new apartments list...
+//                 const maxApartmentLength = Math.max(...newApartments.map(a => a.apartment.length), 'Apartment'.length)
+//                 const maxSqFtLength = Math.max(...newApartments.map(a => a.sqFt.length), 'Sq.Ft'.length)
+//                 const maxRentLength = Math.max(...newApartments.map(a => a.rent.length), 'Rent'.length)
+
+//                 const messageHeader = '<b>🚨 New Apartments Available! 🚨</b>\n'
+//                 const tableHeader = `<b>Apartment${' '.repeat(maxApartmentLength - 'Apartment'.length + 2)}| Sq.Ft${' '.repeat(maxSqFtLength - 'Sq.Ft'.length + 2)}| Rent</b>`
+//                 const horizontalLine = `${'-'.repeat(maxApartmentLength + maxSqFtLength + maxRentLength + 6)}`
+
+//                 const apartmentsList = newApartments.map(a =>
+//                     `${a.apartment}${' '.repeat(maxApartmentLength - a.apartment.length + 2)}| ${a.sqFt}${' '.repeat(maxSqFtLength - a.sqFt.length + 2)}| ${a.rent}`
+//                 ).join(`\n${'-'.repeat(maxApartmentLength + maxSqFtLength + maxRentLength + 6)}\n`)
+
+//                 const message = `${messageHeader}\n<pre>${tableHeader}\n${horizontalLine}\n${apartmentsList}</pre>`
+
+//                 await sendTelegramMessage(message)
+
+//                 prevState = apartments.map(a => `${a.apartment} ${a.sqFt} ${a.rent}`)
+//                 previouslyAvailable = true
+//             }
+//         }
+//     } catch (error) {
+//         console.error('Error during check and notify:', error)
+//         const errorMessage = `Encountered an error: ${error.message}`
+//         uniqueErrors.add(errorMessage) // Add unique errors
+//         if (lastErrorMessage !== errorMessage) {
+//             await sendTelegramMessage(errorMessage)
+//             lastErrorMessage = errorMessage
+//         }
+//     }
+// }
+
 async function checkAndNotify() {
     checksPerformed++
     apartmentsChanged = false // Reset the flag at the start of each check
     try {
         const apartments = await fetchApartments()
-        console.log('apartments =', apartments, '; time =', (new Date()).toISOString())
+        console.log('apartments =', apartments, ' time =', (new Date()).toISOString())
+
+        const currentApartmentDetails = apartments.map(a => `${a.apartment} ${a.sqFt} ${a.rent}`)
+        const newApartments = apartments.filter(a => !prevState.includes(`${a.apartment} ${a.sqFt} ${a.rent}`))
+        const removedApartments = prevState.filter(apt => !currentApartmentDetails.includes(apt))
+
+        if (newApartments.length > 0 || removedApartments.length > 0) {
+            apartmentsChanged = true // Indicate any change
+            let message = '<b>🚨 Apartment Availability Update! 🚨</b>'
+
+            if (newApartments.length > 0) {
+                message += formatApartmentList('\n\nNew Apartments Available:', newApartments)
+            }
+
+            if (removedApartments.length > 0) {
+                // Extract apartment details from the previous state for formatting
+                const formattedRemoved = removedApartments.map(apt => {
+                    let parts = apt.split(' ')
+                    return { apartment: parts[0], sqFt: parts[1], rent: parts.slice(2).join(' ') }
+                })
+                message += formatApartmentList('\n\nRemoved Apartments:', formattedRemoved)
+            }
+
+            await sendTelegramMessage(message)
+            prevState = currentApartmentDetails
+            previouslyAvailable = apartments.length > 0
+        }
 
         if (apartments.length === 0 && previouslyAvailable) {
             await sendTelegramMessage('Oops, all the apartments vanished! 🏃‍♂️💨 You snooze, you lose, bruh! 😜')
             previouslyAvailable = false
-            apartmentsChanged = true // Indicate change
+            apartmentsChanged = true
             prevState = []
-        } else if (apartments.length > 0) {
-            const newApartments = apartments.filter(a => {
-                const aptDetails = `${a.apartment} ${a.sqFt} ${a.rent}`
-                return !prevState.includes(aptDetails)
-            })
-
-            if (newApartments.length > 0 || prevState.length !== apartments.length) {
-                apartmentsChanged = true // Indicate change if there are new apartments or the list length has changed
-            }
-
-            if (newApartments.length > 0) {
-                // Similar message construction as before, sending new apartments list...
-                const maxApartmentLength = Math.max(...newApartments.map(a => a.apartment.length), 'Apartment'.length)
-                const maxSqFtLength = Math.max(...newApartments.map(a => a.sqFt.length), 'Sq.Ft'.length)
-                const maxRentLength = Math.max(...newApartments.map(a => a.rent.length), 'Rent'.length)
-
-                const messageHeader = '<b>🚨 New Apartments Available! 🚨</b>\n'
-                const tableHeader = `<b>Apartment${' '.repeat(maxApartmentLength - 'Apartment'.length + 2)}| Sq.Ft${' '.repeat(maxSqFtLength - 'Sq.Ft'.length + 2)}| Rent</b>`
-                const horizontalLine = `${'-'.repeat(maxApartmentLength + maxSqFtLength + maxRentLength + 6)}`
-
-                const apartmentsList = newApartments.map(a =>
-                    `${a.apartment}${' '.repeat(maxApartmentLength - a.apartment.length + 2)}| ${a.sqFt}${' '.repeat(maxSqFtLength - a.sqFt.length + 2)}| ${a.rent}`
-                ).join(`\n${'-'.repeat(maxApartmentLength + maxSqFtLength + maxRentLength + 6)}\n`)
-
-                const message = `${messageHeader}\n<pre>${tableHeader}\n${horizontalLine}\n${apartmentsList}</pre>`
-
-                await sendTelegramMessage(message)
-
-                prevState = apartments.map(a => `${a.apartment} ${a.sqFt} ${a.rent}`)
-                previouslyAvailable = true
-            }
         }
     } catch (error) {
         console.error('Error during check and notify:', error)
@@ -139,6 +189,23 @@ async function checkAndNotify() {
         }
     }
 }
+
+function formatApartmentList(header, apartments) {
+    const maxApartmentLength = Math.max(...apartments.map(a => a.apartment.length), 'Apartment'.length)
+    const maxSqFtLength = Math.max(...apartments.map(a => a.sqFt.length), 'Sq.Ft'.length)
+    const maxRentLength = Math.max(...apartments.map(a => a.rent.length), 'Rent'.length)
+
+    const messageHeader = `<b>${header}</b>\n`
+    const tableHeader = `<b>Apartment${' '.repeat(maxApartmentLength - 'Apartment'.length + 2)}| Sq.Ft${' '.repeat(maxSqFtLength - 'Sq.Ft'.length + 2)}| Rent</b>`
+    const horizontalLine = `${'-'.repeat(maxApartmentLength + maxSqFtLength + maxRentLength + 6)}`
+
+    const apartmentsList = apartments.map(a =>
+        `${a.apartment}${' '.repeat(maxApartmentLength - a.apartment.length + 2)}| ${a.sqFt}${' '.repeat(maxSqFtLength - a.sqFt.length + 2)}| ${a.rent}`
+    ).join(`\n${horizontalLine}\n`)
+
+    return messageHeader + `\n<pre>${tableHeader}\n${horizontalLine}\n${apartmentsList}</pre>`
+}
+
 
 async function startProcess() {
     const startTime = new Date()
