@@ -203,7 +203,7 @@ function formatApartmentList(header, apartments) {
         `${a.apartment}${' '.repeat(maxApartmentLength - a.apartment.length + 2)}| ${a.sqFt}${' '.repeat(maxSqFtLength - a.sqFt.length + 2)}| ${a.rent}`
     ).join(`\n${horizontalLine}\n`)
 
-    return messageHeader + `\n<pre>${tableHeader}\n${horizontalLine}\n${apartmentsList}</pre>`
+    return messageHeader + `<pre>${tableHeader}\n${horizontalLine}\n${apartmentsList}</pre>`
 }
 
 
