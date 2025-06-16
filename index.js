@@ -15,14 +15,18 @@ let lastErrorMessage = ''
 let uniqueErrors = new Set()
 let previouslyAvailable = false
 const processStartTime = Date.now()
-let apartmentsChanged = false // Variable to track if apartments availability changed
+let apartmentsChanged = false
+
+function generateApartmentKey(a) {
+    return `${a.apartment}__${a.sqFt}__${a.rent}`.toLowerCase().replace(/\s+/g, '')
+}
 
 async function fetchApartments() {
     let browser
     try {
         browser = await puppeteer.launch({
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox'] // Recommended for server environments
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
         })
         const page = await browser.newPage()
         await page.goto(url, { waitUntil: 'networkidle2' })
@@ -41,7 +45,7 @@ async function fetchApartments() {
     } catch (error) {
         console.error('Failed to fetch or parse apartments with Puppeteer:', error)
         uniqueErrors.add(error.message)
-        return [] // Return an empty array as a fallback
+        return []
     } finally {
         if (browser) await browser.close()
     }
@@ -85,91 +89,64 @@ async function sendPeriodicReport() {
     await sendTelegramMessage(message)
 }
 
-// async function checkAndNotify() {
-//     checksPerformed++
-//     apartmentsChanged = false // Reset the flag at the start of each check
-//     try {
-//         const apartments = await fetchApartments()
-//         console.log('apartments =', apartments, ' time =', (new Date()).toISOString())
+function formatApartmentList(title, apartments) {
+    if (apartments.length === 0) return ''
 
-//         if (apartments.length === 0 && previouslyAvailable) {
-//             await sendTelegramMessage('Oops, all the apartments vanished! 🏃‍♂️💨 You snooze, you lose, bruh! 😜')
-//             previouslyAvailable = false
-//             apartmentsChanged = true // Indicate change
-//             prevState = []
-//         } else if (apartments.length > 0) {
-//             const newApartments = apartments.filter(a => {
-//                 const aptDetails = `${a.apartment} ${a.sqFt} ${a.rent}`
-//                 return !prevState.includes(aptDetails)
-//             })
+    const maxApartmentLength = Math.max(...apartments.map(a => a.apartment.length), 'Apartment'.length)
+    const maxSqFtLength = Math.max(...apartments.map(a => a.sqFt.length), 'Sq.Ft'.length)
+    const maxRentLength = Math.max(...apartments.map(a => a.rent.length), 'Rent'.length)
 
-//             if (newApartments.length > 0 || prevState.length !== apartments.length) {
-//                 apartmentsChanged = true // Indicate change if there are new apartments or the list length has changed
-//             }
+    const header = `<b>${title}</b>\n`
+    const tableHeader = `<b>Apartment${' '.repeat(maxApartmentLength - 'Apartment'.length + 2)}| Sq.Ft${' '.repeat(maxSqFtLength - 'Sq.Ft'.length + 2)}| Rent</b>`
+    const separator = `${'-'.repeat(maxApartmentLength + maxSqFtLength + maxRentLength + 6)}`
+    const rows = apartments.map(a =>
+        `${a.apartment}${' '.repeat(maxApartmentLength - a.apartment.length + 2)}| ${a.sqFt}${' '.repeat(maxSqFtLength - a.sqFt.length + 2)}| ${a.rent}`
+    ).join(`\n${separator}\n`)
 
-//             if (newApartments.length > 0) {
-//                 // Similar message construction as before, sending new apartments list...
-//                 const maxApartmentLength = Math.max(...newApartments.map(a => a.apartment.length), 'Apartment'.length)
-//                 const maxSqFtLength = Math.max(...newApartments.map(a => a.sqFt.length), 'Sq.Ft'.length)
-//                 const maxRentLength = Math.max(...newApartments.map(a => a.rent.length), 'Rent'.length)
-
-//                 const messageHeader = '<b>🚨 New Apartments Available! 🚨</b>\n'
-//                 const tableHeader = `<b>Apartment${' '.repeat(maxApartmentLength - 'Apartment'.length + 2)}| Sq.Ft${' '.repeat(maxSqFtLength - 'Sq.Ft'.length + 2)}| Rent</b>`
-//                 const horizontalLine = `${'-'.repeat(maxApartmentLength + maxSqFtLength + maxRentLength + 6)}`
-
-//                 const apartmentsList = newApartments.map(a =>
-//                     `${a.apartment}${' '.repeat(maxApartmentLength - a.apartment.length + 2)}| ${a.sqFt}${' '.repeat(maxSqFtLength - a.sqFt.length + 2)}| ${a.rent}`
-//                 ).join(`\n${'-'.repeat(maxApartmentLength + maxSqFtLength + maxRentLength + 6)}\n`)
-
-//                 const message = `${messageHeader}\n<pre>${tableHeader}\n${horizontalLine}\n${apartmentsList}</pre>`
-
-//                 await sendTelegramMessage(message)
-
-//                 prevState = apartments.map(a => `${a.apartment} ${a.sqFt} ${a.rent}`)
-//                 previouslyAvailable = true
-//             }
-//         }
-//     } catch (error) {
-//         console.error('Error during check and notify:', error)
-//         const errorMessage = `Encountered an error: ${error.message}`
-//         uniqueErrors.add(errorMessage) // Add unique errors
-//         if (lastErrorMessage !== errorMessage) {
-//             await sendTelegramMessage(errorMessage)
-//             lastErrorMessage = errorMessage
-//         }
-//     }
-// }
+    return `${header}<pre>${tableHeader}\n${separator}\n${rows}</pre>`
+}
 
 async function checkAndNotify() {
     checksPerformed++
-    apartmentsChanged = false // Reset the flag at the start of each check
+    apartmentsChanged = false
+
     try {
         const apartments = await fetchApartments()
-        console.log('apartments =', apartments, ' time =', (new Date()).toISOString())
+        console.log('apartments =', apartments, ' time =', new Date().toISOString())
 
-        const currentApartmentDetails = apartments.map(a => `${a.apartment} ${a.sqFt} ${a.rent}`)
-        const newApartments = apartments.filter(a => !prevState.includes(`${a.apartment} ${a.sqFt} ${a.rent}`))
-        const removedApartments = prevState.filter(apt => !currentApartmentDetails.includes(apt))
+        const currentKeys = new Set(apartments.map(generateApartmentKey))
+        const prevKeys = new Set(prevState)
+
+        const newApartments = apartments.filter(a => !prevKeys.has(generateApartmentKey(a)))
+        const removedApartments = prevState
+            .filter(k => !currentKeys.has(k))
+            .map(key => {
+                const [apartment, sqFt, ...rentParts] = key.split('__')
+                return { apartment, sqFt, rent: rentParts.join('__') }
+            })
 
         if (newApartments.length > 0 || removedApartments.length > 0) {
-            apartmentsChanged = true // Indicate any change
-            let message = '<b>🚨 Apartment Availability Update! 🚨</b>'
+            apartmentsChanged = true
+            let sections = []
 
             if (newApartments.length > 0) {
-                message += formatApartmentList('\n\nNew Apartments Available:', newApartments)
+                sections.push(formatApartmentList('🆕 New Apartments:', newApartments))
             }
 
             if (removedApartments.length > 0) {
-                // Extract apartment details from the previous state for formatting
-                const formattedRemoved = removedApartments.map(apt => {
-                    let parts = apt.split(' ')
-                    return { apartment: parts[0], sqFt: parts[1], rent: parts.slice(2).join(' ') }
-                })
-                message += formatApartmentList('\n\nRemoved Apartments:', formattedRemoved)
+                sections.push(formatApartmentList('❌ Removed Apartments:', removedApartments))
             }
 
-            await sendTelegramMessage(message)
-            prevState = currentApartmentDetails
+            if (apartments.length > 0) {
+                sections.push(formatApartmentList('✅ Currently Available:', apartments))
+            } else {
+                sections.push('<b>🚫 No apartments currently available.</b>')
+            }
+
+            const fullMessage = `<b>🚨 Apartment Availability Update! 🚨</b>\n\n${sections.join('\n\n')}`
+            await sendTelegramMessage(fullMessage)
+
+            prevState = [...currentKeys]
             previouslyAvailable = apartments.length > 0
         }
 
@@ -182,7 +159,7 @@ async function checkAndNotify() {
     } catch (error) {
         console.error('Error during check and notify:', error)
         const errorMessage = `Encountered an error: ${error.message}`
-        uniqueErrors.add(errorMessage) // Add unique errors
+        uniqueErrors.add(errorMessage)
         if (lastErrorMessage !== errorMessage) {
             await sendTelegramMessage(errorMessage)
             lastErrorMessage = errorMessage
@@ -190,48 +167,23 @@ async function checkAndNotify() {
     }
 }
 
-function formatApartmentList(header, apartments) {
-    const maxApartmentLength = Math.max(...apartments.map(a => a.apartment.length), 'Apartment'.length)
-    const maxSqFtLength = Math.max(...apartments.map(a => a.sqFt.length), 'Sq.Ft'.length)
-    const maxRentLength = Math.max(...apartments.map(a => a.rent.length), 'Rent'.length)
-
-    const messageHeader = `<b>${header}</b>\n`
-    const tableHeader = `<b>Apartment${' '.repeat(maxApartmentLength - 'Apartment'.length + 2)}| Sq.Ft${' '.repeat(maxSqFtLength - 'Sq.Ft'.length + 2)}| Rent</b>`
-    const horizontalLine = `${'-'.repeat(maxApartmentLength + maxSqFtLength + maxRentLength + 6)}`
-
-    const apartmentsList = apartments.map(a =>
-        `${a.apartment}${' '.repeat(maxApartmentLength - a.apartment.length + 2)}| ${a.sqFt}${' '.repeat(maxSqFtLength - a.sqFt.length + 2)}| ${a.rent}`
-    ).join(`\n${horizontalLine}\n`)
-
-    return messageHeader + `<pre>${tableHeader}\n${horizontalLine}\n${apartmentsList}</pre>`
-}
-
-
 async function startProcess() {
     const startTime = new Date()
     await sendTelegramMessage(`Process started at ${startTime.toISOString()}`)
     console.log('Process started')
 
-    let lastReportTime = Date.now() // Initialize last report time to now
+    let lastReportTime = Date.now()
 
-    // Main loop for checking apartments and sending periodic reports
     while (true) {
         await checkAndNotify()
 
-        // Check if 4 hours has passed since the last report
-        if (Date.now() - lastReportTime >= 14400000) { // 3600000ms = 1 hour
+        if (Date.now() - lastReportTime >= 4 * 60 * 60 * 1000) { // 4 hours
             await sendPeriodicReport()
-            lastReportTime = Date.now() // Reset last report time
+            lastReportTime = Date.now()
         }
 
-        // Wait for 20 seconds before the next check
-        await new Promise(resolve => setTimeout(resolve, 20000))
+        await new Promise(resolve => setTimeout(resolve, 20000)) // 20 sec interval
     }
-
-    // // If you ever decide to stop the process programmatically, add a stop condition and log the end
-    // console.log('Process stopped')
-    // const endTime = new Date()
-    // await sendTelegramMessage(`Process stopped at ${endTime.toISOString()}`)
 }
 
-startProcess() // Call to start the entire process
+startProcess()
